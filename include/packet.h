@@ -28,7 +28,7 @@ typedef enum {
 typedef struct __attribute__((packed)){
         u64             seq_id;
         u16             length;
-        type_t          type;
+        u8              type;
 } header_t;
 
 /* Hardcoded max IPv6 MTU */

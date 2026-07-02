@@ -1,6 +1,6 @@
+#include "../include/types.h"
 #include "../include/packet.h"
 #include "../include/transfer.h"
-#include "../include/logging.h"
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdio.h>

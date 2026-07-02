@@ -2,7 +2,7 @@
 
 u64 seq_num = 0;
 
-u64 increment_pkt_seq_num() {return seq_num++;}
+u64 packet_increment_seq_num() {return seq_num++;}
 
 /* Returns OK if the packet is sane, an error code otherwise */
 i8 packet_validate(const packet_t *pkt, ssize_t bytes_received)
@@ -16,9 +16,9 @@ i8 packet_validate(const packet_t *pkt, ssize_t bytes_received)
         return OK;
 }
 
-void packet_hdr_init(packet_t *pkt, type_t type, u16 length)
+void packet_hdr_init(packet_t *pkt, type_t type, u16 length, u64 seq_num)
 {
         pkt->header.type        = type;
         pkt->header.length      = length;
-        pkt->header.seq_num     = increment_pkt_seq_num();
+        pkt->header.seq_num     = seq_num;
 }

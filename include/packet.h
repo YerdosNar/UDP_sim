@@ -42,7 +42,7 @@ typedef struct {
 } packet_t;
 
 i8 packet_validate(const packet_t *pkt, ssize_t received);
-u64 increment_pkt_seq_num();
-void packet_hdr_init(packet_t *pkt, type_t type, u16 length);
+u64 packet_increment_seq_num();
+void packet_hdr_init(packet_t *pkt, type_t type, u16 length, u64 seq_num);
 
 #endif

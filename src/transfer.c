@@ -30,7 +30,7 @@ static i8 _send_metadata_and_confirm(FILE               *file,
                         "%s|%lu", clean_name, fsize);
         if (n < 0 || n >= (i32)MAX_PLD_LEN) return ERR_PKT_MALFORMED;
 
-        packet_hdr_init(&metadata, FILE_META, n);
+        packet_hdr_init(&metadata, FILE_META, n, packet_increment_seq_num());
         u64 seq_num = metadata.header.seq_num;
 
         sendto(fd, (const void*)&metadata, n + HDR_SZ,
@@ -91,8 +91,8 @@ i8 send_file(i32 fd, struct sockaddr_in *addr, char *filename)
                         fclose(file);
                         return ERR_FILE_READ;
                 }
-                packet_hdr_init(&send_pkt, FILE_DATA, read_bytes);
-                u64 seq_num = send_pkt.header.seq_num;
+                u64 seq_num = packet_increment_seq_num();
+                packet_hdr_init(&send_pkt, FILE_DATA, read_bytes, seq_num);
 
                 total_sent += read_bytes;
 
@@ -127,7 +127,7 @@ i8 send_file(i32 fd, struct sockaddr_in *addr, char *filename)
         }
 
         packet_t eof       = {0};
-        packet_hdr_init(&eof, FILE_EOF, 0);
+        packet_hdr_init(&eof, FILE_EOF, 0, packet_increment_seq_num());
         sendto(fd, (const void*)&eof, HDR_SZ, 0,
                    (const struct sockaddr*)addr, slen);
 
@@ -171,9 +171,7 @@ i8 _recv_metadata_and_send_ack(i32                       fd,
 
         /* Now let's ACK        */
         packet_t ack            = {0};
-        ack.header.length       = 0;
-        ack.header.type         = ACK;
-        ack.header.seq_num      = metadata.header.seq_num;
+        packet_hdr_init(&ack, ACK, 0, metadata.header.seq_num);
 
         if (sendto(fd, (const void*)&ack, HDR_SZ, 0,
                        (const struct sockaddr*)addr, slen) < 0) {
@@ -224,9 +222,7 @@ i8 recv_file(i32 fd, struct sockaddr_in *addr)
                 total_wrt += wrt;
 
                 packet_t ack            = {0};
-                ack.header.length       = 0;
-                ack.header.seq_num      = seq_num;
-                ack.header.type         = ACK;
+                packet_hdr_init(&ack, ACK, 0, seq_num);
 
                 if (sendto(fd, (const void*)&ack, HDR_SZ, 0,
                                (const struct sockaddr*)addr, slen) < 0) {

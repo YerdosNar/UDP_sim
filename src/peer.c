@@ -1,4 +1,4 @@
-#include "../include/logging.h"
+#include "../include/types.h"
 #include "../include/packet.h"
 #include "../include/transfer.h"
 #include <arpa/inet.h>
@@ -39,6 +39,7 @@ int main(void) {
         recvfrom(sockfd, (void*)&rcv_pkt, MAX_PKT_LEN, 0,
                  (struct sockaddr*)&servaddr, &slen);
 
+        if (rcv_pkt.header.length > MAX_PLD_LEN) return ERR_PKT_MALFORMED;
         rcv_pkt.data[rcv_pkt.header.length] = '\0';
         printf("Received: %s from %s:%d\n", rcv_pkt.data, ADDR, PORT);
 

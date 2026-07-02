@@ -30,10 +30,8 @@ static i8 _send_metadata_and_confirm(FILE               *file,
                         "%s|%lu", clean_name, fsize);
         if (n < 0 || n >= (i32)MAX_PLD_LEN) return ERR_PKT_MALFORMED;
 
-        u64 seq_num = increment_pkt_seq_num();
-        metadata.header.length  = n;
-        metadata.header.type    = FILE_META;
-        metadata.header.seq_num = seq_num;
+        packet_hdr_init(&metadata, FILE_META, n);
+        u64 seq_num = metadata.header.seq_num;
 
         sendto(fd, (const void*)&metadata, n + HDR_SZ,
                 0, (const struct sockaddr*)addr, slen);
@@ -93,10 +91,8 @@ i8 send_file(i32 fd, struct sockaddr_in *addr, char *filename)
                         fclose(file);
                         return ERR_FILE_READ;
                 }
-                u64 seq_num = increment_pkt_seq_num();
-                send_pkt.header.seq_num = seq_num;
-                send_pkt.header.type    = FILE_DATA;
-                send_pkt.header.length  = read_bytes;
+                packet_hdr_init(&send_pkt, FILE_DATA, read_bytes);
+                u64 seq_num = send_pkt.header.seq_num;
 
                 total_sent += read_bytes;
 
@@ -131,9 +127,7 @@ i8 send_file(i32 fd, struct sockaddr_in *addr, char *filename)
         }
 
         packet_t eof       = {0};
-        eof.header.type    = FILE_EOF;
-        eof.header.length  = 0;
-        eof.header.seq_num = increment_pkt_seq_num();
+        packet_hdr_init(&eof, FILE_EOF, 0);
         sendto(fd, (const void*)&eof, HDR_SZ, 0,
                    (const struct sockaddr*)addr, slen);
 

@@ -15,3 +15,10 @@ i8 packet_validate(const packet_t *pkt, ssize_t bytes_received)
 
         return OK;
 }
+
+void packet_hdr_init(packet_t *pkt, type_t type, u16 length)
+{
+        pkt->header.type        = type;
+        pkt->header.length      = length;
+        pkt->header.seq_num     = increment_pkt_seq_num();
+}

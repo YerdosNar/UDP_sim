@@ -49,9 +49,7 @@ int main(int argc, char **argv) {
         const char *send_msg    = "Hello from the Server";
         i8 msg_len              = strlen(send_msg);
         packet_t send_pkt       = {0};
-        send_pkt.header.seq_num = 0;
-        send_pkt.header.length  = msg_len;
-        send_pkt.header.type    = DATA;
+        packet_hdr_init(&send_pkt, DATA, msg_len);
         memcpy(send_pkt.data, send_msg, msg_len);
         sendto(sockfd, (const void*)&send_pkt,
                msg_len + sizeof(header_t),

@@ -27,9 +27,7 @@ int main(void) {
         const char *msg                 = "Hello from the Client";
         i8 msg_len                      = strlen(msg);
         packet_t pkt                    = {0};
-        pkt.header.seq_num              = 0;
-        pkt.header.type                 = DATA;
-        pkt.header.length               = msg_len;
+        packet_hdr_init(&pkt, DATA, msg_len);
         strncpy((char*)pkt.data, msg, msg_len);
         sendto(sockfd, (const void*)&pkt, msg_len + HDR_SZ,
                0, (const struct sockaddr *)&servaddr, slen);

@@ -27,24 +27,27 @@ int main(void) {
         const char *msg                 = "Hello from the Client";
         i8 msg_len                      = strlen(msg);
         packet_t pkt                    = {0};
-        packet_hdr_init(&pkt, DATA, msg_len, packet_increment_seq_num());
-        strncpy((char*)pkt.data, msg, msg_len);
+        packet_hdr_init(&pkt, HELLO, msg_len, packet_increment_seq_num());
+        memcpy(pkt.data, msg, msg_len);
         sendto(sockfd, (const void*)&pkt, msg_len + HDR_SZ,
                0, (const struct sockaddr *)&servaddr, slen);
         printf("Sent: \"%s\" to %s:%d\n", msg, ADDR, PORT);
 
+        if (connect(sockfd, (const struct sockaddr*)&servaddr, slen) == -1) {
+                fprintf(stderr, "ERROR: connect(servaddr) failed\n");
+                return ERR_CONN_REFUSED;
+        }
+
         packet_t rcv_pkt = {0};
-        ssize_t received = recvfrom(sockfd, (void*)&rcv_pkt,
-                                MAX_PKT_LEN, 0,
-                                (struct sockaddr*)&servaddr, &slen);
+        ssize_t received = recv(sockfd, &rcv_pkt, MAX_PKT_LEN, 0);
 
         i8 validate = packet_validate(&rcv_pkt, received);
         if (validate != OK) return validate;
+        if (rcv_pkt.header.type != HELLO_ACK) return ERR_PKT_TYPE_MISMATCH;
 
-        rcv_pkt.data[rcv_pkt.header.length] = '\0';
-        printf("Received: %s from %s:%d\n", rcv_pkt.data, ADDR, PORT);
-
-        i8 ret = recv_file(sockfd, &servaddr);
+        printf("Received: %.*s from %s:%d\n",
+                        rcv_pkt.header.length, rcv_pkt.data, ADDR, PORT);
+        i8 ret = recv_file(sockfd);
         if (ret) {
                 return ret;
         }

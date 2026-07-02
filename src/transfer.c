@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 #include <libgen.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/socket.h>
 
 /*
@@ -15,9 +16,7 @@
  */
 static i8 _send_metadata_and_confirm(FILE               *file,
                                      char               *fname,
-                                     i32                fd,
-                                     struct sockaddr_in *addr,
-                                     socklen_t          slen)
+                                     i32                fd)
 {
         packet_t metadata = {0};
 
@@ -33,14 +32,11 @@ static i8 _send_metadata_and_confirm(FILE               *file,
         packet_hdr_init(&metadata, FILE_META, n, packet_increment_seq_num());
         u64 seq_num = metadata.header.seq_num;
 
-        sendto(fd, (const void*)&metadata, n + HDR_SZ,
-                0, (const struct sockaddr*)addr, slen);
+        if (send(fd, &metadata, PKT_SZ(n), 0) == -1) return ERR_NETWORK;
 
         /* Let's confirm */
         packet_t metadata_ack = {0};
-        ssize_t received = recvfrom(fd, (void*)&metadata_ack,
-                                MAX_PKT_LEN, 0,
-                                (struct sockaddr*)addr, &slen);
+        ssize_t received = recv(fd, &metadata_ack, MAX_PKT_LEN, 0);
         i8 validate = packet_validate(&metadata_ack, received);
         if (validate != OK) return validate;
 
@@ -61,20 +57,19 @@ static i8 _send_metadata_and_confirm(FILE               *file,
         return OK;
 }
 
-i8 send_file(i32 fd, struct sockaddr_in *addr, char *filename)
+i8 send_file(i32 fd, char *filename)
 {
-        if (!filename || fd <= 0 || !addr) {
+        if (!filename || fd <= 0) {
                 fprintf(stderr, "ERROR: NULL pointer\n");
                 return ERR_NULL_PTR;
         }
-        socklen_t slen = sizeof(*addr);
         FILE *file = fopen(filename, "rb");
         if (!file) {
                 fprintf(stderr, "ERROR: fopen(%s) failed\n", filename);
                 return ERR_FILE_OPEN;
         }
 
-        i8 ret = _send_metadata_and_confirm(file, filename, fd, addr, slen);
+        i8 ret = _send_metadata_and_confirm(file, filename, fd);
         if (ret) {
                 fclose(file);
                 return ret;
@@ -96,13 +91,11 @@ i8 send_file(i32 fd, struct sockaddr_in *addr, char *filename)
 
                 total_sent += read_bytes;
 
-                sendto(fd, (const void*)&send_pkt, read_bytes + HDR_SZ,
-                                0, (const struct sockaddr*)addr, slen);
+                if (send(fd, &send_pkt, PKT_SZ(read_bytes), 0) == -1)
+                        return ERR_NETWORK;
 
                 packet_t recv_pkt = {0};
-                ssize_t received = recvfrom(fd, (void*)&recv_pkt,
-                                        MAX_PKT_LEN, 0,
-                                        (struct sockaddr*)addr, &slen);
+                ssize_t received = recv(fd, &recv_pkt, MAX_PKT_LEN, 0);
                 i8 validate = packet_validate(&recv_pkt, received);
                 if (validate != OK) { fclose(file); return validate; }
 
@@ -128,8 +121,7 @@ i8 send_file(i32 fd, struct sockaddr_in *addr, char *filename)
 
         packet_t eof       = {0};
         packet_hdr_init(&eof, FILE_EOF, 0, packet_increment_seq_num());
-        sendto(fd, (const void*)&eof, HDR_SZ, 0,
-                   (const struct sockaddr*)addr, slen);
+        if (send(fd, &eof, PKT_SZ(0), 0) == -1) return ERR_NETWORK;
 
         printf("\nFile is delivered successfully\n");
 
@@ -138,18 +130,15 @@ i8 send_file(i32 fd, struct sockaddr_in *addr, char *filename)
 }
 
 i8 _recv_metadata_and_send_ack(i32                       fd,
-                               const struct sockaddr_in *addr,
-                               socklen_t                 slen,
                                char                     *out_name)
 {
         packet_t metadata = {0};
-        ssize_t received = recvfrom(fd, (void*)&metadata,
-                                    MAX_PKT_LEN, 0,
-                                    (struct sockaddr*)addr, &slen);
+        ssize_t received = recv(fd, &metadata, MAX_PKT_LEN, 0);
         i8 validate = packet_validate(&metadata, received);
-        if (validate != OK) return validate;
-        if (metadata.header.type != FILE_META) return ERR_PKT_TYPE_MISMATCH;
-        if (metadata.header.length < 3) return ERR_PKT_MALFORMED;
+
+        if (validate != OK)                     return validate;
+        if (metadata.header.type != FILE_META)  return ERR_PKT_TYPE_MISMATCH;
+        if (metadata.header.length < 3)         return ERR_PKT_MALFORMED;
 
         u16 last_idx = 0;
         for (u16 i = metadata.header.length-1; i > 0; i--) {
@@ -165,27 +154,31 @@ i8 _recv_metadata_and_send_ack(i32                       fd,
         }
 
         for (u16 i = 0; i < last_idx; i++) {
+                if (metadata.data[i] == '/') {
+                        fprintf(stderr, "ERROR: Filename contains '/'\n");
+                        return ERR_PKT_MALFORMED;
+                }
                 out_name[i] = metadata.data[i];
         }
         out_name[last_idx] = '\0';
+        if (!strcmp(out_name, ".") || !strcmp(out_name, "..")) {
+                fprintf(stderr, "ERROR: Invalid filename\n");
+                return ERR_PKT_MALFORMED;
+        }
 
         /* Now let's ACK        */
         packet_t ack            = {0};
         packet_hdr_init(&ack, ACK, 0, metadata.header.seq_num);
 
-        if (sendto(fd, (const void*)&ack, HDR_SZ, 0,
-                       (const struct sockaddr*)addr, slen) < 0) {
-                return ERR_NETWORK;
-        }
+        if (send(fd, &ack, PKT_SZ(0), 0) == -1) return ERR_NETWORK;
 
         return OK;
 }
 
-i8 recv_file(i32 fd, struct sockaddr_in *addr)
+i8 recv_file(i32 fd)
 {
-        socklen_t slen = sizeof(*addr);
         char fname[MAX_PLD_LEN];
-        i8 ret = _recv_metadata_and_send_ack(fd , addr, slen, fname);
+        i8 ret = _recv_metadata_and_send_ack(fd, fname);
         if (ret) {
                 return ret;
         }
@@ -199,9 +192,7 @@ i8 recv_file(i32 fd, struct sockaddr_in *addr)
         u64 total_wrt = 0;
         while (1) {
                 packet_t recv_pkt = {0};
-                ssize_t received = recvfrom(fd, (void*)&recv_pkt,
-                                           MAX_PKT_LEN, 0,
-                                           (struct sockaddr*)addr, &slen);
+                ssize_t received = recv(fd, &recv_pkt, MAX_PKT_LEN, 0);
                 if (packet_validate(&recv_pkt, received) != OK) {
                         continue; // Just skip this packet
                 }
@@ -224,8 +215,8 @@ i8 recv_file(i32 fd, struct sockaddr_in *addr)
                 packet_t ack            = {0};
                 packet_hdr_init(&ack, ACK, 0, seq_num);
 
-                if (sendto(fd, (const void*)&ack, HDR_SZ, 0,
-                               (const struct sockaddr*)addr, slen) < 0) {
+                if (send(fd, &ack, PKT_SZ(0), 0) == -1) {
+                        fclose(file);
                         return ERR_NETWORK;
                 }
 

@@ -2,7 +2,8 @@
 #define PACKET_H
 
 #include "types.h"
-#include <stdlib.h>
+
+#include <sys/types.h>
 
 typedef enum {
         /* Handshake packets */
@@ -30,6 +31,7 @@ typedef struct __attribute__((packed)){
 } header_t;
 
 #define HDR_SZ          sizeof(header_t)
+#define PKT_SZ(length)  ((HDR_SZ) + (length))
 
 /* Hardcoded max IPv6 MTU */
 #define MAX_PKT_LEN     1280

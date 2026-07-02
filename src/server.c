@@ -12,6 +12,11 @@
 #define BUFF_LEN        1024
 
 int main(int argc, char **argv) {
+        if (2 > argc) {
+                fprintf(stderr, "ERROR: No file provided\n");
+                printf("Usage: %s <filename>\n", argv[0]);
+                return ERR_FILE_OPEN;
+        }
         char *filename = argv[1];
 
         i32     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -33,34 +38,42 @@ int main(int argc, char **argv) {
                 return ERR_BIND;
         }
 
-        packet_t recv_pkt = {0};
-        ssize_t received = recvfrom(sockfd, (void*)&recv_pkt,
-                                MAX_PKT_LEN, MSG_WAITALL,
-                                (struct sockaddr *)&cli_addr, &clen);
-        i8 validate = packet_validate(&recv_pkt, received);
+        packet_t recv_pkt       = {0};
+        ssize_t received        = recvfrom(sockfd, (void*)&recv_pkt,
+                                  MAX_PKT_LEN, MSG_WAITALL,
+                                  (struct sockaddr *)&cli_addr, &clen);
+        i8 validate             = packet_validate(&recv_pkt, received);
         if (validate != OK) return validate;
 
-        u16 pkt_len = recv_pkt.header.length;
-        char recv_msg[pkt_len + 1];
-        recv_msg[pkt_len] = '\0';
-        strncpy(recv_msg, (const char*)recv_pkt.data, sizeof(recv_msg));
-        printf("Received: %s\n", recv_msg);
+        printf("Received: %.*s\n", recv_pkt.header.length, recv_pkt.data);
+        const char *check       = "Hello from the Client";
+        const u16   check_len   = strlen(check);
+        if (recv_pkt.header.type   != HELLO     ||
+            recv_pkt.header.length != check_len ||
+            memcmp(check, recv_pkt.data, check_len)) {
+                fprintf(stderr, "ERROR: Not protocol packet arrived\n");
+                return ERR_PKT_MALFORMED;
+        }
+
+        if (connect(sockfd, (const struct sockaddr*)&cli_addr, clen) == -1) {
+                fprintf(stderr, "ERROR: connect(cli_addr) failed\n");
+                return ERR_CONN_REFUSED;
+        }
 
         const char *send_msg    = "Hello from the Server";
         i8 msg_len              = strlen(send_msg);
         packet_t send_pkt       = {0};
-        packet_hdr_init(&send_pkt, DATA, msg_len, packet_increment_seq_num());
+        packet_hdr_init(&send_pkt, HELLO_ACK,
+                        msg_len, packet_increment_seq_num());
         memcpy(send_pkt.data, send_msg, msg_len);
-        sendto(sockfd, (const void*)&send_pkt,
-               msg_len + sizeof(header_t),
-               MSG_CONFIRM,
-               (const struct sockaddr*)&cli_addr, clen);
+        if (send(sockfd, &send_pkt, PKT_SZ(msg_len), 0) == -1)
+                return ERR_NETWORK;
 
         printf("Sent: %s\n", send_msg);
 
         printf("\nSent: BYE\n");
 
-        i8 ret = send_file(sockfd, &cli_addr, filename);
+        i8 ret = send_file(sockfd, filename);
         if (ret) {
                 return ret;
         }

@@ -6,18 +6,6 @@
 #include <stdio.h>
 #include <sys/socket.h>
 
-/* Returns OK if the packet is sane, an error code otherwise */
-i8 packet_validate(const packet_t *pkt, ssize_t bytes_received)
-{
-        if (bytes_received < 0)                 return ERR_NETWORK;
-        if (bytes_received < (ssize_t)HDR_SZ)   return ERR_NETWORK;
-        if (pkt->header.length > MAX_PLD_LEN)   return ERR_PKT_MALFORMED;
-        if (bytes_received != (ssize_t)(HDR_SZ + pkt->header.length))
-                return ERR_PKT_MALFORMED;
-
-        return OK;
-}
-
 /*
  * Sends the metadata of a file (name, and size)
  * and sets the pointer to the beginning.
@@ -52,8 +40,12 @@ static i8 _send_metadata_and_confirm(FILE               *file,
 
         /* Let's confirm */
         packet_t metadata_ack = {0};
-        recvfrom(fd, (void*)&metadata_ack, HDR_SZ + sizeof(u64),
-                        0, (struct sockaddr*)addr, &slen);
+        ssize_t received = recvfrom(fd, (void*)&metadata_ack,
+                                MAX_PKT_LEN, 0,
+                                (struct sockaddr*)addr, &slen);
+        i8 validate = packet_validate(&metadata_ack, received);
+        if (validate != OK) return validate;
+
         u8 type = metadata_ack.header.type;
         if (type != ACK) {
                 fprintf(stderr, "ERROR: Type mismatch. Received: %d,"
@@ -112,8 +104,12 @@ i8 send_file(i32 fd, struct sockaddr_in *addr, char *filename)
                                 0, (const struct sockaddr*)addr, slen);
 
                 packet_t recv_pkt = {0};
-                recvfrom(fd, (void*)&recv_pkt, MAX_PKT_LEN, 0,
-                                (struct sockaddr*)addr, &slen);
+                ssize_t received = recvfrom(fd, (void*)&recv_pkt,
+                                        MAX_PKT_LEN, 0,
+                                        (struct sockaddr*)addr, &slen);
+                i8 validate = packet_validate(&recv_pkt, received);
+                if (validate != OK) { fclose(file); return validate; }
+
                 i8 type = recv_pkt.header.type;
                 if (type != ACK) {
                         fprintf(stderr, "ERROR: Type mismatch. Received: %d,"
@@ -158,6 +154,8 @@ i8 _recv_metadata_and_send_ack(i32                       fd,
                                     (struct sockaddr*)addr, &slen);
         i8 validate = packet_validate(&metadata, received);
         if (validate != OK) return validate;
+        if (metadata.header.type != FILE_META) return ERR_PKT_TYPE_MISMATCH;
+        if (metadata.header.length < 3) return ERR_PKT_MALFORMED;
 
         u16 last_idx = 0;
         for (u16 i = metadata.header.length-1; i > 0; i--) {
@@ -166,7 +164,8 @@ i8 _recv_metadata_and_send_ack(i32                       fd,
                         break;
                 }
         }
-        if (!last_idx) {
+
+        if (last_idx < 1) {
                 fprintf(stderr, "ERROR: Empty filename\n");
                 return ERR_PKT_MALFORMED;
         }

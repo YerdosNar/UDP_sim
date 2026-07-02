@@ -1,4 +1,4 @@
-peer
-server
+obj/
+bin/
 test-f/*
 test-f/

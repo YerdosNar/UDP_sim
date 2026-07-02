@@ -36,10 +36,13 @@ int main(void) {
         printf("Sent: \"%s\" to %s:%d\n", msg, ADDR, PORT);
 
         packet_t rcv_pkt = {0};
-        recvfrom(sockfd, (void*)&rcv_pkt, MAX_PKT_LEN, 0,
-                 (struct sockaddr*)&servaddr, &slen);
+        ssize_t received = recvfrom(sockfd, (void*)&rcv_pkt,
+                                MAX_PKT_LEN, 0,
+                                (struct sockaddr*)&servaddr, &slen);
 
-        if (rcv_pkt.header.length > MAX_PLD_LEN) return ERR_PKT_MALFORMED;
+        i8 validate = packet_validate(&rcv_pkt, received);
+        if (validate != OK) return validate;
+
         rcv_pkt.data[rcv_pkt.header.length] = '\0';
         printf("Received: %s from %s:%d\n", rcv_pkt.data, ADDR, PORT);
 

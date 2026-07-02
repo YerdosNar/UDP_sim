@@ -2,6 +2,7 @@
 #define PACKET_H
 
 #include "types.h"
+#include <stdlib.h>
 
 typedef enum {
         /* Handshake packets */
@@ -40,6 +41,7 @@ typedef struct {
         u8              data[MAX_PLD_LEN];
 } packet_t;
 
+i8 packet_validate(const packet_t *pkt, ssize_t received);
 u64 increment_pkt_seq_num();
 
 #endif

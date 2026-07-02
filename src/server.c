@@ -34,8 +34,12 @@ int main(int argc, char **argv) {
         }
 
         packet_t recv_pkt = {0};
-        recvfrom(sockfd, (void*)&recv_pkt, MAX_PKT_LEN, MSG_WAITALL,
-                        (struct sockaddr *)&cli_addr, &clen);
+        ssize_t received = recvfrom(sockfd, (void*)&recv_pkt,
+                                MAX_PKT_LEN, MSG_WAITALL,
+                                (struct sockaddr *)&cli_addr, &clen);
+        i8 validate = packet_validate(&recv_pkt, received);
+        if (validate != OK) return validate;
+
         u16 pkt_len = recv_pkt.header.length;
         char recv_msg[pkt_len + 1];
         recv_msg[pkt_len] = '\0';

@@ -2,10 +2,13 @@
 #include "../include/packet.h"
 #include "../include/transfer.h"
 #include <arpa/inet.h>
+#include <asm-generic/socket.h>
+#include <bits/types/struct_timeval.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #define PORT            8888
@@ -55,6 +58,8 @@ int main(int argc, char **argv) {
                 return ERR_PKT_MALFORMED;
         }
 
+        struct timeval tv = {.tv_sec = 0, .tv_usec = 500*1000};
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         if (connect(sockfd, (const struct sockaddr*)&cli_addr, clen) == -1) {
                 fprintf(stderr, "ERROR: connect(cli_addr) failed\n");
                 return ERR_CONN_REFUSED;
@@ -66,18 +71,15 @@ int main(int argc, char **argv) {
         packet_hdr_init(&send_pkt, HELLO_ACK,
                         msg_len, packet_increment_seq_num());
         memcpy(send_pkt.data, send_msg, msg_len);
-        if (send(sockfd, &send_pkt, PKT_SZ(msg_len), 0) == -1)
-                return ERR_NETWORK;
+        i8 ret = packet_send_and_recv_ack(sockfd, &send_pkt, msg_len);
+        if (ret) return ret;
 
         printf("Sent: %s\n", send_msg);
 
         printf("\nSent: BYE\n");
 
-        i8 ret = send_file(sockfd, filename);
-        if (ret) {
-                return ret;
-        }
-
+        ret = transfer_send_file(sockfd, filename);
         close(sockfd);
-        return OK;
+
+        return ret;
 }

@@ -2,10 +2,12 @@
 #include "../include/packet.h"
 #include "../include/transfer.h"
 #include <arpa/inet.h>
+#include <asm-generic/socket.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #define PORT            8888
@@ -18,6 +20,8 @@ int main(void) {
                 return ERR_SOCKET;
         }
 
+        struct timeval tv               = {.tv_sec = 0, .tv_usec = 500*1000};
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         struct sockaddr_in servaddr     = {0};
         servaddr.sin_family             = AF_INET;
         servaddr.sin_port               = htons(PORT);
@@ -47,7 +51,7 @@ int main(void) {
 
         printf("Received: %.*s from %s:%d\n",
                         rcv_pkt.header.length, rcv_pkt.data, ADDR, PORT);
-        i8 ret = recv_file(sockfd);
+        i8 ret = transfer_recv_file(sockfd);
         if (ret) {
                 return ret;
         }

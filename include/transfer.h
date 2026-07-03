@@ -5,7 +5,9 @@
 #include "types.h"
 #include <netinet/in.h>
 
-i8 send_file(i32 fd, char *filename);
-i8 recv_file(i32 fd);
+#define MAX_RETRIES     5
+
+i8 transfer_send_file(i32 fd, char *filename);
+i8 transfer_recv_file(i32 fd);
 
 #endif

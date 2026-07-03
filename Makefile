@@ -9,6 +9,9 @@ COMMON  := $(OBJ)/packet.o $(OBJ)/transfer.o
 
 all: $(BIN)/server $(BIN)/peer
 
+test-drop: clean
+	$(MAKE) CFLAGS="$(CFLAGS) -DDROP_TEST" all
+
 $(BIN)/server: $(OBJ)/server.o $(COMMON) | $(BIN)
 	$(CC) $(CFLAGS) $^ -o $@
 
@@ -24,4 +27,4 @@ $(OBJ) $(BIN):
 clean:
 	rm -rf $(OBJ) $(BIN)
 
-.PHONY: all clean
+.PHONY: all clean test-drop

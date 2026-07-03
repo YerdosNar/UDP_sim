@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 #include <libgen.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 
@@ -75,7 +76,7 @@ i8 transfer_send_file(i32 fd, char *filename)
         return packet_send_and_recv_ack(fd, &eof, 0);
 }
 
-i8 _recv_metadata_and_send_ack(i32 fd, char *out_name)
+i8 _recv_metadata_and_send_ack(i32 fd, char *out_name, u64 *seq_num)
 {
         packet_t metadata = {0};
         ssize_t received = recv(fd, &metadata, MAX_PKT_LEN, 0);
@@ -116,13 +117,15 @@ i8 _recv_metadata_and_send_ack(i32 fd, char *out_name)
         packet_hdr_init(&ack, ACK, 0, metadata.header.seq_num);
         if (send(fd, &ack, PKT_SZ(0), 0) == -1) return ERR_NETWORK;
 
+        *seq_num = metadata.header.seq_num;
         return OK;
 }
 
 i8 transfer_recv_file(i32 fd)
 {
         char fname[MAX_PLD_LEN];
-        i8 ret = _recv_metadata_and_send_ack(fd, fname);
+        u64 last_seq;
+        i8 ret = _recv_metadata_and_send_ack(fd, fname, &last_seq);
         if (ret) return ret;
 
         FILE *file = fopen(fname, "wb");
@@ -145,18 +148,37 @@ i8 transfer_recv_file(i32 fd)
                         fclose(file);
                         return OK;
                 }
-                i32 wrt = fwrite((const void*)recv_pkt.data, 1, len, file);
-                if (wrt <= 0) {
-                        fprintf(stderr, "ERROR: write failed at %luB\n",
-                                        total_wrt);
-                        fclose(file);
-                        return ERR_FILE_WRITE;
-                }
-                total_wrt += wrt;
 
-                if (send(fd, &ack, PKT_SZ(0), 0) == -1) {
-                        fclose(file);
-                        return ret;
+                i32 wrt = 0;
+                if (recv_pkt.header.type == FILE_DATA) {
+                        if (seq_num <= last_seq) {
+                                if (send(fd, &ack, PKT_SZ(0), 0) == -1) {
+                                        fclose(file);
+                                        return ERR_NETWORK;
+                                }
+                                continue;
+                        }
+                        wrt = fwrite(recv_pkt.data, 1, len, file);
+                        if (wrt <= 0) {
+                                fprintf(stderr, "ERROR: write fail at %luB\n",
+                                                total_wrt);
+                                fclose(file);
+                                return ERR_FILE_WRITE;
+                        }
+                        total_wrt += wrt;
+                        last_seq = seq_num;
+
+
+#ifdef DROP_TEST
+                        if (rand() % 5 == 0) {
+                                printf("\n[DROP_TEST] dropped ACK seq %lu\n", seq_num);
+                                continue;
+                        }
+#endif
+                        if (send(fd, &ack, PKT_SZ(0), 0) == -1) {
+                                fclose(file);
+                                return ERR_NETWORK;
+                        }
                 }
 
                 printf("\rReceived: %lu, ACKed seq_num: %lu",

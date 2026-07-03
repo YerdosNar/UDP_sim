@@ -2,7 +2,6 @@
 #include "../include/packet.h"
 #include "../include/transfer.h"
 #include <arpa/inet.h>
-#include <asm-generic/socket.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>

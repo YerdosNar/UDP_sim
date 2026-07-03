@@ -71,14 +71,15 @@ int main(int argc, char **argv) {
         packet_hdr_init(&send_pkt, HELLO_ACK,
                         msg_len, packet_increment_seq_num());
         memcpy(send_pkt.data, send_msg, msg_len);
-        i8 ret = packet_send_and_recv_ack(sockfd, &send_pkt, msg_len);
-        if (ret) return ret;
+        if (send(sockfd, &send_pkt, PKT_SZ(msg_len), 0) == -1)
+                return ERR_NETWORK;
 
         printf("Sent: %s\n", send_msg);
 
-        printf("\nSent: BYE\n");
 
-        ret = transfer_send_file(sockfd, filename);
+        i8 ret = transfer_send_file(sockfd, filename);
+
+        printf("\nSent: BYE\n");
         close(sockfd);
 
         return ret;

@@ -139,8 +139,12 @@ i8 transfer_recv_file(i32 fd)
                 packet_t ack      = {0};
                 packet_hdr_init(&ack, ACK, 0, seq_num);
 
-                if (recv_pkt.header.type == FILE_EOF)
-                        return packet_send_and_recv_ack(fd, &ack, 0);
+                if (recv_pkt.header.type == FILE_EOF) {
+                        if (send(fd, &ack, PKT_SZ(0), 0) == -1)
+                                return ERR_NETWORK;
+                        fclose(file);
+                        return OK;
+                }
                 i32 wrt = fwrite((const void*)recv_pkt.data, 1, len, file);
                 if (wrt <= 0) {
                         fprintf(stderr, "ERROR: write failed at %luB\n",
@@ -150,8 +154,7 @@ i8 transfer_recv_file(i32 fd)
                 }
                 total_wrt += wrt;
 
-                ret = packet_send_and_recv_ack(fd, &ack, 0);
-                if (ret) {
+                if (send(fd, &ack, PKT_SZ(0), 0) == -1) {
                         fclose(file);
                         return ret;
                 }

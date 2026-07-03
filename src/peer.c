@@ -52,10 +52,9 @@ int main(void) {
         printf("Received: %.*s from %s:%d\n",
                         rcv_pkt.header.length, rcv_pkt.data, ADDR, PORT);
         i8 ret = transfer_recv_file(sockfd);
-        if (ret) {
-                return ret;
-        }
+        if (ret) return ret;
 
+        printf("\nSent: BYE\n");
         close(sockfd);
         return OK;
 }

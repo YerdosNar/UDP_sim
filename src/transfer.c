@@ -2,6 +2,7 @@
 #include "../include/packet.h"
 #include "../include/transfer.h"
 #include <arpa/inet.h>
+#include <errno.h>
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,57 +77,61 @@ i8 transfer_send_file(i32 fd, char *filename)
         return packet_send_and_recv_ack(fd, &eof, 0);
 }
 
-i8 _recv_metadata_and_send_ack(i32 fd, char *out_name, u64 *seq_num)
+i8 _recv_metadata_and_send_ack(i32      fd,
+                               char     *out_name,
+                               u64      *out_size,
+                               u64      *seq_num)
 {
-        packet_t metadata = {0};
-        ssize_t received = recv(fd, &metadata, MAX_PKT_LEN, 0);
-        i8 validate = packet_validate(&metadata, received);
+        packet_t metadata       = {0};
+        ssize_t received        = recv(fd, &metadata, MAX_PKT_LEN, 0);
+        i8 validate             = packet_validate(&metadata, received);
+        header_t hdr            = metadata.header;
 
-        if (validate != OK)                     return validate;
-        if (metadata.header.type != FILE_META)  return ERR_PKT_TYPE_MISMATCH;
-        if (metadata.header.length < 3)         return ERR_PKT_MALFORMED;
+        if (validate != OK)             return validate;
+        if (hdr.type != FILE_META)      return ERR_PKT_TYPE_MISMATCH;
+        if (hdr.length < 3)             return ERR_PKT_MALFORMED;
 
-        u16 last_idx = 0;
-        for (u16 i = metadata.header.length-1; i > 0; i--) {
-                if (metadata.data[i] == '|') {
-                        last_idx = i;
-                        break;
-                }
-        }
+        char *data              = (char*)metadata.data;
+        data[hdr.length]        = '\0';
 
-        if (last_idx < 1) {
-                fprintf(stderr, "ERROR: Empty filename\n");
+        char *fname = strtok(data, "|");
+        size_t name_len = strlen(fname);
+        if (name_len < 1 || name_len == hdr.length)
                 return ERR_PKT_MALFORMED;
-        }
 
-        for (u16 i = 0; i < last_idx; i++) {
-                if (metadata.data[i] == '/') {
-                        fprintf(stderr, "ERROR: Filename contains '/'\n");
-                        return ERR_PKT_MALFORMED;
-                }
-                out_name[i] = metadata.data[i];
-        }
-        out_name[last_idx] = '\0';
-        if (!strcmp(out_name, ".") || !strcmp(out_name, "..")) {
-                fprintf(stderr, "ERROR: Invalid filename\n");
+        char *end       = NULL;
+        errno           = 0;
+        char *size_str  = strtok(NULL, "|");
+
+        *out_size       = strtoull(size_str, &end, 10);
+        if (errno == EINVAL || end == size_str || *end != '\0')
                 return ERR_PKT_MALFORMED;
-        }
 
-        /* Now let's ACK        */
-        packet_t ack            = {0};
-        packet_hdr_init(&ack, ACK, 0, metadata.header.seq_num);
+        out_name[name_len] = '\0';
+        for (u16 i = 0; i < name_len; i++) {
+                if (fname[i] == '/')            return ERR_PKT_MALFORMED;
+                out_name[i] = fname[i];
+        }
+        if (!strcmp(out_name, ".") || !strcmp(out_name, ".."))
+                return ERR_PKT_MALFORMED;
+
+        *seq_num        = hdr.seq_num;
+        packet_t ack    = {0};
+        packet_hdr_init(&ack, ACK, 0, *seq_num);
         if (send(fd, &ack, PKT_SZ(0), 0) == -1) return ERR_NETWORK;
 
-        *seq_num = metadata.header.seq_num;
         return OK;
 }
 
 i8 transfer_recv_file(i32 fd)
 {
         char fname[MAX_PLD_LEN];
+        u64 fsize;
         u64 last_seq;
-        i8 ret = _recv_metadata_and_send_ack(fd, fname, &last_seq);
+        i8 ret = _recv_metadata_and_send_ack(fd, fname, &fsize, &last_seq);
         if (ret) return ret;
+
+        printf("[DEBUG] name: %s, size: %lu\n", fname, fsize);
 
         FILE *file = fopen(fname, "wb");
         if (!file) return ERR_FILE_OPEN;
@@ -142,22 +147,24 @@ i8 transfer_recv_file(i32 fd)
                 packet_t ack      = {0};
                 packet_hdr_init(&ack, ACK, 0, seq_num);
 
+                /* Send ACK regardless of type */
+                if (seq_num <= last_seq) {
+                        if (send(fd, &ack, PKT_SZ(0), 0) == -1) {
+                                fclose(file);
+                                return ERR_NETWORK;
+                        }
+                        continue;
+                }
+
                 if (recv_pkt.header.type == FILE_EOF) {
+                        fclose(file);
                         if (send(fd, &ack, PKT_SZ(0), 0) == -1)
                                 return ERR_NETWORK;
-                        fclose(file);
                         return OK;
                 }
 
                 i32 wrt = 0;
                 if (recv_pkt.header.type == FILE_DATA) {
-                        if (seq_num <= last_seq) {
-                                if (send(fd, &ack, PKT_SZ(0), 0) == -1) {
-                                        fclose(file);
-                                        return ERR_NETWORK;
-                                }
-                                continue;
-                        }
                         wrt = fwrite(recv_pkt.data, 1, len, file);
                         if (wrt <= 0) {
                                 fprintf(stderr, "ERROR: write fail at %luB\n",
@@ -168,13 +175,13 @@ i8 transfer_recv_file(i32 fd)
                         total_wrt += wrt;
                         last_seq = seq_num;
 
-
 #ifdef DROP_TEST
                         if (rand() % 5 == 0) {
                                 printf("\n[DROP_TEST] dropped ACK seq %lu\n", seq_num);
                                 continue;
                         }
 #endif
+
                         if (send(fd, &ack, PKT_SZ(0), 0) == -1) {
                                 fclose(file);
                                 return ERR_NETWORK;

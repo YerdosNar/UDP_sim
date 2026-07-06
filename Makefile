@@ -1,5 +1,5 @@
 CC      := gcc
-CFLAGS  := -Wall -Wextra -Wpedantic -std=c11 -g -Iinclude
+CFLAGS  := -Wall -Wextra -Wpedantic -std=c11 -D_DEFAULT_SOURCE -g -Iinclude
 
 SRC     := src
 OBJ     := obj

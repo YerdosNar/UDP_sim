@@ -73,7 +73,7 @@ i8 transfer_send_file(i32 fd, char *filename)
         }
         fclose(file);
 
-        packet_t eof       = {0};
+        packet_t eof = {0};
         packet_hdr_init(&eof, FILE_EOF, 0, packet_increment_seq_num());
         return packet_send_and_recv_ack(fd, &eof, 0);
 }
@@ -90,7 +90,8 @@ i8 _recv_metadata_and_send_ack(i32      fd,
 
         if (validate != OK)             return validate;
         if (hdr.type != FILE_META)      return ERR_PKT_TYPE_MISMATCH;
-        if (hdr.length < 3)             return ERR_PKT_MALFORMED;
+        if (hdr.length < 3 || hdr.length >= MAX_PLD_LEN)
+                return ERR_PKT_MALFORMED;
 
         char *data              = (char*)metadata.data;
         data[hdr.length]        = '\0';
@@ -105,12 +106,12 @@ i8 _recv_metadata_and_send_ack(i32      fd,
         char *size_str  = strtok(NULL, "|");
 
         *out_size       = strtoull(size_str, &end, 10);
-        if (errno == EINVAL || end == size_str || *end != '\0')
+        if (errno == ERANGE || end == size_str || *end != '\0')
                 return ERR_PKT_MALFORMED;
 
         out_name[name_len] = '\0';
         for (u16 i = 0; i < name_len; i++) {
-                if (fname[i] == '/')            return ERR_PKT_MALFORMED;
+                if (fname[i] == '/')    return ERR_PKT_MALFORMED;
                 out_name[i] = fname[i];
         }
         if (!strcmp(out_name, ".") || !strcmp(out_name, ".."))
@@ -157,6 +158,8 @@ i8 transfer_recv_file(i32 fd)
 
                 if (recv_pkt.header.type == FILE_EOF) {
                         fclose(file);
+                        if (total_wrt != fsize)
+                                return ERR_FILE_WRITE;
                         if (send(fd, &ack, PKT_SZ(0), 0) == -1)
                                 return ERR_NETWORK;
                         return OK;
@@ -175,7 +178,7 @@ i8 transfer_recv_file(i32 fd)
                         last_seq = seq_num;
 
 #ifdef DROP_TEST
-                        if (rand() % 5 == 0) {
+                        if (rand() % 500 == 0) {
                                 printf("\n[DROP_TEST] dropped ACK seq %lu\n", seq_num);
                                 continue;
                         }

@@ -46,9 +46,8 @@ int main(int argc, char **argv) {
                                   MAX_PKT_LEN, MSG_WAITALL,
                                   (struct sockaddr *)&cli_addr, &clen);
         i8 validate             = packet_validate(&recv_pkt, received);
-        if (validate != OK) return validate;
+        if (validate != OK)     return validate;
 
-        printf("Received: %.*s\n", recv_pkt.header.length, recv_pkt.data);
         const char *check       = "Hello from the Client";
         const u16   check_len   = strlen(check);
         if (recv_pkt.header.type   != HELLO     ||
@@ -74,10 +73,8 @@ int main(int argc, char **argv) {
         if (send(sockfd, &send_pkt, PKT_SZ(msg_len), 0) == -1)
                 return ERR_NETWORK;
 
-        printf("Sent: %s\n", send_msg);
-
-
         i8 ret = transfer_send_file(sockfd, filename);
+        if (ret) return ret;
 
         printf("\nSent: BYE\n");
         close(sockfd);

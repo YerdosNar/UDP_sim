@@ -16,15 +16,11 @@
  * On success: returns 0
  * On failure: returns status_t code
  */
-static i8 _send_metadata_and_confirm(FILE *file, char *fname, i32 fd)
+static i8 _send_metadata_and_confirm(char *fname, u64 fsize, i32 fd)
 {
         packet_t metadata = {0};
 
         char *clean_name = basename(fname);
-        fseek(file, 0, SEEK_END);
-        u64 fsize = ftell(file);
-        rewind(file);
-
         i32 n = snprintf((char*)metadata.data, MAX_PLD_LEN,
                         "%s|%lu", clean_name, fsize);
         if (n < 0 || n >= (i32)MAX_PLD_LEN) return ERR_PKT_MALFORMED;
@@ -40,7 +36,11 @@ i8 transfer_send_file(i32 fd, char *filename)
         FILE *file = fopen(filename, "rb");
         if (!file) return ERR_FILE_OPEN;
 
-        i8 ret = _send_metadata_and_confirm(file, filename, fd);
+        fseek(file, 0, SEEK_END);
+        u64 fsize = ftell(file);
+        rewind(file);
+
+        i8 ret = _send_metadata_and_confirm(filename, fsize, fd);
         if (ret) {
                 fclose(file);
                 return ret;
@@ -67,7 +67,8 @@ i8 transfer_send_file(i32 fd, char *filename)
                         return ret;
                 }
 
-                printf("\rSent: %lu, ACKed seq_num: %lu", total_sent, seq_num);
+                printf("\rSent: %lu/%lu, ACKed seq_num: %lu",
+                        total_sent, fsize, seq_num);
                 fflush(stdout);
         }
         fclose(file);
@@ -131,8 +132,6 @@ i8 transfer_recv_file(i32 fd)
         i8 ret = _recv_metadata_and_send_ack(fd, fname, &fsize, &last_seq);
         if (ret) return ret;
 
-        printf("[DEBUG] name: %s, size: %lu\n", fname, fsize);
-
         FILE *file = fopen(fname, "wb");
         if (!file) return ERR_FILE_OPEN;
 
@@ -188,8 +187,8 @@ i8 transfer_recv_file(i32 fd)
                         }
                 }
 
-                printf("\rReceived: %lu, ACKed seq_num: %lu",
-                                total_wrt, seq_num);
+                printf("\rReceived: %lu/%lu, ACKed seq_num: %lu",
+                                total_wrt, fsize, seq_num);
                 fflush(stdout);
         }
 

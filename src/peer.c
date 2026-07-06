@@ -34,7 +34,6 @@ int main(void) {
         memcpy(pkt.data, msg, msg_len);
         sendto(sockfd, (const void*)&pkt, msg_len + HDR_SZ,
                0, (const struct sockaddr *)&servaddr, slen);
-        printf("Sent: \"%s\" to %s:%d\n", msg, ADDR, PORT);
 
         if (connect(sockfd, (const struct sockaddr*)&servaddr, slen) == -1) {
                 fprintf(stderr, "ERROR: connect(servaddr) failed\n");
@@ -48,8 +47,6 @@ int main(void) {
         if (validate != OK) return validate;
         if (rcv_pkt.header.type != HELLO_ACK) return ERR_PKT_TYPE_MISMATCH;
 
-        printf("Received: %.*s from %s:%d\n",
-                        rcv_pkt.header.length, rcv_pkt.data, ADDR, PORT);
         i8 ret = transfer_recv_file(sockfd);
         if (ret) return ret;
 

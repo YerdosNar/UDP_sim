@@ -42,6 +42,7 @@ typedef enum {
         ERR_MEM_ALLOC           = -24,
         ERR_NULL_PTR            = -25,
         ERR_SEQ_MISMATCH        = -26,
+        ERR_SIZE_MISMATCH       = -27,
 
         /* File related ERRORs                  */
         ERR_FILE_OPEN           = -30,

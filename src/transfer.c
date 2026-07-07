@@ -159,7 +159,7 @@ i8 transfer_recv_file(i32 fd)
                 if (recv_pkt.header.type == FILE_EOF) {
                         fclose(file);
                         if (total_wrt != fsize)
-                                return ERR_FILE_WRITE;
+                                return ERR_SIZE_MISMATCH;
                         if (send(fd, &ack, PKT_SZ(0), 0) == -1)
                                 return ERR_NETWORK;
                         return OK;
